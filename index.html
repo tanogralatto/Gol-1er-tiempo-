@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Radar +0.5 1T</title>
+<style>
+/* Concepto: tablero de partidos ordenado por probabilidad, números en monoespaciada, verde cancha + ámbar para alertas. */
+:root{
+  --bg:#f2f4ef; --surface:#ffffff; --fg:#14211a; --muted:#5a6a60; --line:#dce3da;
+  --accent:#1d7a4b; --accent-fg:#ffffff; --chip:#e8eee7;
+  --good:#1d7a4b; --mid:#a8741a; --low:#b23b2b;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1712; --surface:#17211b; --fg:#e6efe8; --muted:#93a59a; --line:#26342b;
+    --accent:#4cc185; --accent-fg:#06150d; --chip:#1f2c24;
+    --good:#4cc185; --mid:#e0a94a; --low:#ee7a69; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1712; --surface:#17211b; --fg:#e6efe8; --muted:#93a59a; --line:#26342b;
+  --accent:#4cc185; --accent-fg:#06150d; --chip:#1f2c24;
+  --good:#4cc185; --mid:#e0a94a; --low:#ee7a69; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{
+  margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 var(--sans);
+  padding-block:max(16px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:14px}
+h1{font-size:22px; margin:0; letter-spacing:.02em}
+h1 span{color:var(--accent)}
+.sub{margin:2px 0 0; color:var(--muted); font-size:13px}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px}
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px}
+label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; min-width:0}
+input{font:inherit; font-size:16px; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 10px; min-width:0; width:100%}
+input:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+button{font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 16px; background:var(--accent); color:var(--accent-fg); cursor:pointer}
+button.ghost{background:transparent; color:var(--muted); border:1px solid var(--line); font-weight:500}
+button[disabled]{opacity:.5; cursor:default}
+.meta{font-size:13px; color:var(--muted)}
+.meta b{color:var(--fg); font-family:var(--mono); font-variant-numeric:tabular-nums}
+.status{font-size:14px}
+.err{color:var(--low); font-size:13px; white-space:pre-wrap}
+.bar{height:4px; background:var(--line); border-radius:2px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--accent); width:0}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px}
+.lg{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.teams{margin:2px 0 0; font-size:17px; font-weight:650; line-height:1.3; text-wrap:balance}
+.teams em{font-style:normal; color:var(--muted); font-weight:400; padding:0 4px}
+.score{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.score strong{font:700 30px/1 var(--mono); font-variant-numeric:tabular-nums}
+.score span{font-size:13px; color:var(--muted)}
+.good{color:var(--good)} .mid{color:var(--mid)} .low{color:var(--low)}
+.tag{display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; background:var(--chip); color:var(--muted)}
+details summary{cursor:pointer; font-size:14px; color:var(--accent); font-weight:600; padding:4px 0}
+.tbl{overflow-x:auto; margin-top:6px}
+table{border-collapse:collapse; width:100%; min-width:300px; font-size:14px}
+th,td{text-align:left; padding:7px 6px; border-bottom:1px solid var(--line)}
+th{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:600}
+td.n{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+td.n.p{font-weight:700}
+.foot{font-size:12px; color:var(--muted); line-height:1.5}
+.empty{padding:20px 4px; color:var(--muted); font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>RADAR <span>+0.5 1T</span></h1>
+    <p class="sub">Partidos del día ordenados por la frecuencia histórica de al menos 1 gol en el primer tiempo.</p>
+  </header>
+
+  <section class="panel" aria-label="Configuración">
+    <div class="grid">
+      <label for="key">API key de API-Football
+        <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Pegá tu key">
+      </label>
+      <label for="date">Fecha
+        <input id="date" type="date">
+      </label>
+      <label for="max">Máx. partidos a analizar
+        <input id="max" type="number" min="1" max="200" inputmode="numeric" value="12">
+      </label>
+      <label for="minavg">Mostrar desde (promedio %)
+        <input id="minavg" type="number" min="0" max="100" inputmode="numeric" value="70">
+      </label>
+      <label for="pause">Pausa entre consultas (ms)
+        <input id="pause" type="number" min="0" max="10000" inputmode="numeric" value="700">
+      </label>
+    </div>
+    <div class="row">
+      <button id="go" type="button">Analizar</button>
+      <button id="stop" type="button" class="ghost" hidden>Detener</button>
+      <button id="clear" type="button" class="ghost">Borrar caché</button>
+    </div>
+    <div class="meta">Consultas restantes hoy: <b id="rem">—</b> · usadas en esta sesión: <b id="calls">0</b></div>
+    <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <div class="err" id="errs"></div>
+  </section>
+
+  <section id="results" aria-label="Resultados"></section>
+
+  <p class="foot">
+    Cada partido se evalúa con 7 tramos: local últimos 20, últimos 10 en casa y últimos 6; visitante últimos 20, últimos 10 fuera y últimos 6; y H2H de los últimos 8 (o los que haya). Cuenta los partidos terminados con al menos 1 gol antes del descanso, en todas las competiciones que registre la API. Los partidos sin marcador al descanso se excluyen del conteo y por eso el total puede ser menor al pedido. El ranking usa el promedio simple de los 7 porcentajes.
+    La key se guarda solo en este navegador. Los datos de cada equipo se guardan 12 horas para ahorrar consultas.
+  </p>
+</div>
+
+<script>
+/*TEST-START*/
+const FINISHED = new Set(['FT','AET','PEN']);
+
+function compact(x){
+  const hh = x && x.score && x.score.halftime ? x.score.halftime.home : null;
+  const ha = x && x.score && x.score.halftime ? x.score.halftime.away : null;
+  return {
+    d: Date.parse(x.fixture.date),
+    h: x.teams.home.id,
+    a: x.teams.away.id,
+    st: x.fixture.status.short,
+    ht: (hh == null || ha == null) ? null : hh + ha
+  };
+}
+
+function tramo(list){
+  const valid = list.filter(f => f.ht !== null);
+  const hit = valid.filter(f => f.ht >= 1).length;
+  return { hit, n: valid.length, asked: list.length, pct: valid.length ? hit / valid.length * 100 : null };
+}
+
+function newestFirst(list){
+  return list.filter(f => FINISHED.has(f.st)).sort((a, b) => b.d - a.d);
+}
+
+function teamTramos(list, teamId, side){
+  const L = newestFirst(list);
+  const sideList = L.filter(f => side === 'home' ? f.h === teamId : f.a === teamId);
+  return { t20: tramo(L.slice(0, 20)), tSide: tramo(sideList.slice(0, 10)), t6: tramo(L.slice(0, 6)) };
+}
+
+function h2hTramo(list){
+  return tramo(newestFirst(list).slice(0, 8));
+}
+
+function summarize(rows){
+  const pcts = rows.map(r => r.pct).filter(p => p !== null);
+  if (!pcts.length) return { avg: null, min: null, count: 0 };
+  const avg = pcts.reduce((s, p) => s + p, 0) / pcts.length;
+  return { avg, min: Math.min.apply(null, pcts), count: pcts.length };
+}
+/*TEST-END*/
+
+const API = 'https://v3.football.api-sports.io';
+const TZ = 'America/Argentina/Buenos_Aires';
+const LS = 'radar1t.';
+const TEAM_TTL = 12 * 3600 * 1000;
+const H2H_TTL = 7 * 24 * 3600 * 1000;
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const state = { key: '', pause: 700, remaining: null, calls: 0, stop: false, running: false, results: [] };
+
+function lsGet(k){ try { return JSON.parse(localStorage.getItem(LS + k)); } catch (e) { return null; } }
+function lsSet(k, v){ try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) { /* sin espacio o bloqueado */ } }
+function lsDel(k){ try { localStorage.removeItem(LS + k); } catch (e) {} }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function pruneCache(){
+  try {
+    const now = Date.now();
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf(LS + 't') !== 0 && k.indexOf(LS + 'h') !== 0) continue;
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+      const ttl = k.indexOf(LS + 'h') === 0 ? H2H_TTL : TEAM_TTL;
+      if (!v || !v.t || now - v.t > ttl) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+}
+
+function setStatus(t){ $('status').textContent = t; }
+function addErr(t){ const el = $('errs'); el.textContent = (el.textContent ? el.textContent + '\n' : '') + t; }
+function updMeta(){
+  $('rem').textContent = state.remaining === null ? '—' : state.remaining;
+  $('calls').textContent = state.calls;
+}
+
+async function api(path, params){
+  const url = new URL(API + path);
+  Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await sleep(state.pause);
+    const res = await fetch(url.toString(), { headers: { 'x-apisports-key': state.key } });
+    state.calls++;
+    const rem = res.headers.get('x-ratelimit-requests-remaining');
+    if (rem !== null && rem !== '') state.remaining = Number(rem);
+    updMeta();
+    if (res.status === 429) { setStatus('Límite por minuto alcanzado, esperando 20 s…'); await sleep(20000); continue; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    const errs = j.errors;
+    const hasErr = Array.isArray(errs) ? errs.length > 0 : (errs && Object.keys(errs).length > 0);
+    if (hasErr) {
+      if (errs.rateLimit && attempt === 0) { setStatus('Límite por minuto alcanzado, esperando 20 s…'); await sleep(20000); continue; }
+      const e = new Error(Object.keys(errs).map(k => errs[k]).join(' · '));
+      e.fatal = /token|key|plan|subscription|suspended|access|request limit|limit for the day/i.test(e.message);
+      throw e;
+    }
+    return j.response;
+  }
+  throw new Error('Límite de consultas por minuto');
+}
+
+async function teamFixtures(teamId){
+  const key = 't' + teamId;
+  const c = lsGet(key);
+  if (c && Date.now() - c.t < TEAM_TTL) return c.f;
+  const yr = new Date().getFullYear();
+  let f = (await api('/fixtures', { team: teamId, season: yr })).map(compact);
+  const fin = newestFirst(f);
+  const enough = fin.length >= 20 && fin.filter(x => x.h === teamId).length >= 10 && fin.filter(x => x.a === teamId).length >= 10;
+  if (!enough) {
+    try {
+      f = f.concat((await api('/fixtures', { team: teamId, season: yr - 1 })).map(compact));
+    } catch (e) {
+      if (!/plan|season/i.test(e.message)) throw e;
+      if (!state.seasonWarned) { state.seasonWarned = true; addErr('Aviso: tu plan no da acceso a la temporada ' + (yr - 1) + ', algunos tramos pueden tener menos partidos. (' + e.message + ')'); }
+    }
+  }
+  lsSet(key, { t: Date.now(), f });
+  return f;
+}
+
+async function h2hFixtures(a, b){
+  const key = 'h' + Math.min(a, b) + '-' + Math.max(a, b);
+  const c = lsGet(key);
+  if (c && Date.now() - c.t < H2H_TTL) return c.f;
+  const resp = await api('/fixtures/headtohead', { h2h: a + '-' + b });
+  const f = resp.map(compact);
+  lsSet(key, { t: Date.now(), f });
+  return f;
+}
+
+function hora(ts){
+  return new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: TZ, hour12: false }).format(ts);
+}
+
+function cls(p){ return p === null ? '' : p >= 80 ? 'good' : p >= 65 ? 'mid' : 'low'; }
+function fmt(p){ return p === null ? '—' : Math.round(p) + '%'; }
+
+function cardHtml(r){
+  const rows = [
+    ['Local · últimos 20', r.home.t20],
+    ['Local · últimos 10 en casa', r.home.tSide],
+    ['Local · últimos 6', r.home.t6],
+    ['Visitante · últimos 20', r.away.t20],
+    ['Visitante · últimos 10 fuera', r.away.tSide],
+    ['Visitante · últimos 6', r.away.t6],
+    ['H2H · últimos 8', r.h2h]
+  ];
+  const body = rows.map(x => {
+    const t = x[1];
+    return '<tr><td>' + x[0] + '</td><td class="n">' + t.hit + '/' + t.n + '</td><td class="n p ' + cls(t.pct) + '">' + fmt(t.pct) + '</td></tr>';
+  }).join('');
+  const incompleto = r.sum.count < 7 ? '<span class="tag">' + r.sum.count + ' de 7 tramos con datos</span>' : '';
+  return '<article class="card">' +
+    '<div><div class="lg">' + esc(r.league) + ' · ' + hora(r.ts) + '</div>' +
+    '<h3 class="teams">' + esc(r.homeName) + '<em>vs</em>' + esc(r.awayName) + '</h3></div>' +
+    '<div class="score"><strong class="' + cls(r.sum.avg) + '">' + fmt(r.sum.avg) + '</strong>' +
+    '<span>promedio de los tramos · mínimo ' + fmt(r.sum.min) + '</span>' + incompleto + '</div>' +
+    '<details><summary>Ver los 7 tramos</summary><div class="tbl"><table>' +
+    '<thead><tr><th>Tramo</th><th>Con gol 1T</th><th>%</th></tr></thead><tbody>' + body + '</tbody></table></div></details>' +
+    '</article>';
+}
+
+function render(){
+  const min = Number($('minavg').value) || 0;
+  const list = state.results.slice().sort((a, b) => {
+    const ca = a.sum.count >= 5 ? 1 : 0, cb = b.sum.count >= 5 ? 1 : 0;
+    if (ca !== cb) return cb - ca;
+    return (b.sum.avg || 0) - (a.sum.avg || 0);
+  });
+  const shown = list.filter(r => r.sum.avg !== null && r.sum.avg >= min);
+  const el = $('results');
+  if (!state.results.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="meta" style="margin-bottom:10px">Mostrando <b>' + shown.length + '</b> de <b>' + list.length + '</b> partidos analizados.</div>' +
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+    (shown.length ? shown.map(cardHtml).join('') : '<div class="empty">Ningún partido analizado llega al promedio mínimo elegido.</div>') + '</div>';
+}
+
+async function run(){
+  if (state.running) return;
+  state.key = $('key').value.trim();
+  state.pause = Math.max(0, Number($('pause').value) || 0);
+  const date = $('date').value;
+  const max = Math.max(1, Math.min(200, Number($('max').value) || 12));
+  if (!state.key) { setStatus('Falta la API key.'); return; }
+  if (!date) { setStatus('Elegí una fecha.'); return; }
+  lsSet('key', state.key);
+  lsSet('cfg', { max, minavg: $('minavg').value, pause: state.pause });
+
+  state.running = true; state.stop = false; state.results = []; state.seasonWarned = false;
+  $('errs').textContent = ''; $('go').disabled = true; $('stop').hidden = false; $('prog').style.width = '0';
+  render();
+  let fails = 0;
+  try {
+    setStatus('Buscando los partidos del ' + date + '…');
+    const resp = await api('/fixtures', { date, timezone: TZ });
+    const upcoming = resp.filter(x => x.fixture.status.short === 'NS').sort((a, b) => Date.parse(a.fixture.date) - Date.parse(b.fixture.date));
+    const todo = upcoming.slice(0, max);
+    if (!upcoming.length) { setStatus('No hay partidos por jugar en esa fecha (' + resp.length + ' en total).'); return; }
+    setStatus(upcoming.length + ' partidos por jugar. Analizando ' + todo.length + '…');
+
+    for (let i = 0; i < todo.length; i++) {
+      if (state.stop) { setStatus('Detenido. Analizados ' + state.results.length + ' de ' + todo.length + '.'); break; }
+      if (state.remaining !== null && state.remaining < 4) { setStatus('Quedan pocas consultas del día. Freno acá con ' + state.results.length + ' partidos analizados.'); break; }
+      const m = todo[i];
+      setStatus('(' + (i + 1) + '/' + todo.length + ') ' + m.teams.home.name + ' vs ' + m.teams.away.name);
+      try {
+        const hl = await teamFixtures(m.teams.home.id);
+        const al = await teamFixtures(m.teams.away.id);
+        const hh = await h2hFixtures(m.teams.home.id, m.teams.away.id);
+        const home = teamTramos(hl, m.teams.home.id, 'home');
+        const away = teamTramos(al, m.teams.away.id, 'away');
+        const h2h = h2hTramo(hh);
+        const sum = summarize([home.t20, home.tSide, home.t6, away.t20, away.tSide, away.t6, h2h]);
+        state.results.push({
+          league: m.league.name + (m.league.country ? ' (' + m.league.country + ')' : ''),
+          ts: Date.parse(m.fixture.date), homeName: m.teams.home.name, awayName: m.teams.away.name,
+          home, away, h2h, sum
+        });
+        fails = 0;
+        render();
+      } catch (e) {
+        if (e.fatal) throw e;
+        fails++;
+        addErr(m.teams.home.name + ' vs ' + m.teams.away.name + ': ' + e.message);
+        if (fails >= 3) throw new Error('Tres errores seguidos, frené. Último: ' + e.message);
+      }
+      $('prog').style.width = Math.round((i + 1) / todo.length * 100) + '%';
+    }
+    if (!state.stop && state.results.length) setStatus('Listo. ' + state.results.length + ' partidos analizados.');
+  } catch (e) {
+    addErr(e.message || String(e));
+    setStatus('Se cortó el análisis.');
+  } finally {
+    state.running = false; $('go').disabled = false; $('stop').hidden = true; render();
+  }
+}
+
+function init(){
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+  $('date').value = today;
+  const k = lsGet('key'); if (k) $('key').value = k;
+  const cfg = lsGet('cfg');
+  if (cfg) {
+    if (cfg.max) $('max').value = cfg.max;
+    if (cfg.minavg !== undefined) $('minavg').value = cfg.minavg;
+    if (cfg.pause !== undefined) $('pause').value = cfg.pause;
+  }
+  pruneCache();
+  $('go').addEventListener('click', run);
+  $('stop').addEventListener('click', () => { state.stop = true; });
+  $('minavg').addEventListener('input', render);
+  $('clear').addEventListener('click', () => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.indexOf(LS + 't') === 0 || key.indexOf(LS + 'h') === 0)) localStorage.removeItem(key);
+      }
+    } catch (e) {}
+    setStatus('Caché borrada.');
+  });
+  updMeta();
+}
+init();
+</script>
+</body>
+</html>
